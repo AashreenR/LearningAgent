@@ -1,12 +1,23 @@
+import logging
+import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import agent
 import db
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger(__name__)
 
 INDEX_FILE = Path(__file__).with_name("index.html")
 
@@ -18,6 +29,22 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="AI Learning Coach", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next) -> Response:
+    started = time.perf_counter()
+    logger.info("HTTP request started method=%s path=%s", request.method, request.url.path)
+    response = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - started) * 1000)
+    logger.info(
+        "HTTP request method=%s path=%s status=%d latency_ms=%d",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    return response
 
 
 class ChatRequest(BaseModel):
@@ -40,6 +67,7 @@ def post_chat(request: ChatRequest) -> dict[str, str]:
     try:
         return {"reply": agent.chat(request.session_id, request.message)}
     except Exception as error:
+        logger.exception("Chat request failed")
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 

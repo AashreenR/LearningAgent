@@ -31,7 +31,7 @@ Use Python 3.11 or newer. Create and activate a virtual environment:
    uvicorn main:app --reload
    ```
 
-5. Open <http://127.0.0.1:8000>.
+5. Open <http://localhost:8000>. Docker binds to `0.0.0.0` inside the container so it accepts connections, but use `localhost` (or `127.0.0.1`) in your browser. The chat page uses browser APIs that may not be enabled at `http://0.0.0.0`.
 
 The app creates `learning_coach.db` in this folder on startup. Run tests with `pytest`.
 

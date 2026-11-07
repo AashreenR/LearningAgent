@@ -79,7 +79,9 @@
       const sessionKey = "learning-coach-session-id";
       let sessionId = localStorage.getItem(sessionKey);
       if (!sessionId) {
-        sessionId = crypto.randomUUID();
+        sessionId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         localStorage.setItem(sessionKey, sessionId);
       }
 
