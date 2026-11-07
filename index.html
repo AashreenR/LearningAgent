@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Learning Coach</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #172033;
+        background: #f4f6fb;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; }
+      header { padding: 22px 6vw; background: #fff; border-bottom: 1px solid #e5e9f2; }
+      header h1 { margin: 0; font-size: 1.25rem; }
+      header p { margin: 5px 0 0; color: #667085; font-size: .92rem; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 20px;
+        max-width: 1280px;
+        margin: 24px auto;
+        padding: 0 22px;
+        align-items: start;
+      }
+      .panel { background: white; border: 1px solid #e5e9f2; border-radius: 14px; overflow: hidden; }
+      .panel h2 { margin: 0; padding: 18px 20px; font-size: 1rem; border-bottom: 1px solid #edf0f5; }
+      .chat-messages { height: min(62vh, 620px); min-height: 300px; padding: 20px; overflow-y: auto; }
+      .message { width: fit-content; max-width: 86%; margin: 0 0 12px; padding: 11px 14px; border-radius: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .message.coach { background: #f0f3f9; }
+      .message.user { margin-left: auto; color: white; background: #4659d8; }
+      .chat-form { display: flex; gap: 10px; padding: 14px; border-top: 1px solid #edf0f5; }
+      textarea { flex: 1; min-height: 44px; max-height: 130px; resize: vertical; padding: 11px 12px; border: 1px solid #d8deea; border-radius: 9px; font: inherit; }
+      button { padding: 0 17px; border: 0; border-radius: 9px; color: white; background: #4659d8; font: inherit; font-weight: 600; cursor: pointer; }
+      button:disabled { opacity: .55; cursor: wait; }
+      #plans { padding: 18px 20px; }
+      .empty { color: #667085; font-size: .95rem; line-height: 1.5; }
+      .plan { padding: 0 0 18px; margin: 0 0 18px; border-bottom: 1px solid #edf0f5; }
+      .plan:last-child { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
+      .plan h3 { margin: 0 0 12px; font-size: 1rem; }
+      .plan ol { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+      .step { display: flex; align-items: flex-start; gap: 10px; line-height: 1.45; }
+      .step input { margin-top: 4px; accent-color: #4659d8; }
+      .step label { flex: 1; }
+      .step.done label { color: #818a9b; text-decoration: line-through; }
+      a { color: #4659d8; text-underline-offset: 3px; }
+      .error { padding: 0 18px 12px; color: #b42318; font-size: .9rem; }
+      @media (max-width: 760px) {
+        main { grid-template-columns: 1fr; margin-top: 15px; padding: 0 12px; }
+        .chat-messages { height: 45vh; min-height: 260px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Learning Coach</h1>
+      <p>Tell me what you want to learn. We’ll make a practical plan together.</p>
+    </header>
+    <main>
+      <section class="panel" aria-labelledby="chat-title">
+        <h2 id="chat-title">Coach chat</h2>
+        <div id="messages" class="chat-messages" aria-live="polite">
+          <div class="message coach">Hi! What would you like to learn? I’ll ask a couple of quick questions and build a plan for you.</div>
+        </div>
+        <div id="chat-error" class="error" role="alert"></div>
+        <form id="chat-form" class="chat-form">
+          <textarea id="message-input" aria-label="Message" placeholder="I want to learn..." required></textarea>
+          <button id="send-button" type="submit">Send</button>
+        </form>
+      </section>
+      <section class="panel" aria-labelledby="plans-title">
+        <h2 id="plans-title">Your learning plans</h2>
+        <div id="plans"><p class="empty">Your saved plans will show up here.</p></div>
+      </section>
+    </main>
+    <script>
+      const sessionKey = "learning-coach-session-id";
+      let sessionId = localStorage.getItem(sessionKey);
+      if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem(sessionKey, sessionId);
+      }
+
+      const messages = document.querySelector("#messages");
+      const plansContainer = document.querySelector("#plans");
+      const chatError = document.querySelector("#chat-error");
+      const input = document.querySelector("#message-input");
+      const sendButton = document.querySelector("#send-button");
+
+      function addMessage(text, role) {
+        const element = document.createElement("div");
+        element.className = `message ${role}`;
+        element.textContent = text;
+        messages.append(element);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      async function loadPlans() {
+        const response = await fetch("/plans");
+        if (!response.ok) throw new Error("Could not load plans.");
+        const plans = await response.json();
+        plansContainer.replaceChildren();
+        if (plans.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "empty";
+          empty.textContent = "Your saved plans will show up here.";
+          plansContainer.append(empty);
+          return;
+        }
+        for (const plan of plans) {
+          const section = document.createElement("section");
+          section.className = "plan";
+          const heading = document.createElement("h3");
+          heading.textContent = plan.topic;
+          section.append(heading);
+          const list = document.createElement("ol");
+          for (const step of plan.steps) {
+            const item = document.createElement("li");
+            item.className = `step${step.done ? " done" : ""}`;
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = step.done;
+            checkbox.id = `step-${step.id}`;
+            checkbox.addEventListener("change", async () => {
+              checkbox.disabled = true;
+              try {
+                const result = await fetch(`/steps/${step.id}/toggle`, { method: "POST" });
+                if (!result.ok) throw new Error("Could not update this step.");
+                await loadPlans();
+              } catch (error) {
+                checkbox.checked = !checkbox.checked;
+                showPlanError(error.message);
+              } finally {
+                checkbox.disabled = false;
+              }
+            });
+            const label = document.createElement("label");
+            label.htmlFor = checkbox.id;
+            if (step.url) {
+              const link = document.createElement("a");
+              link.href = step.url;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = step.title;
+              label.append(link);
+            } else {
+              label.textContent = step.title;
+            }
+            item.append(checkbox, label);
+            list.append(item);
+          }
+          section.append(list);
+          plansContainer.append(section);
+        }
+      }
+
+      function showPlanError(message) {
+        let error = document.querySelector("#plans-error");
+        if (!error) {
+          error = document.createElement("p");
+          error.id = "plans-error";
+          error.className = "error";
+          plansContainer.prepend(error);
+        }
+        error.textContent = message;
+      }
+
+      document.querySelector("#chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message) return;
+        addMessage(message, "user");
+        input.value = "";
+        chatError.textContent = "";
+        sendButton.disabled = true;
+        try {
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, message })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "The coach could not respond.");
+          addMessage(data.reply, "coach");
+          await loadPlans();
+        } catch (error) {
+          chatError.textContent = error.message;
+        } finally {
+          sendButton.disabled = false;
+          input.focus();
+        }
+      });
+
+      loadPlans().catch((error) => showPlanError(error.message));
+    </script>
+  </body>
+</html>
